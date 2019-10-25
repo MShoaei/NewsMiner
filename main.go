@@ -1,13 +1,7 @@
 package main
 
-import (
-	"github.com/gocolly/colly"
-)
+import "github.com/MShoaei/NewsMiner/agencies"
 
 func main() {
-	c := colly.NewCollector()
-	c.OnHTML("", func(e *colly.HTMLElement) {
-
-	})
-	c.Visit("")
+	agencies.YJCExtract()
 }
