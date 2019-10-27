@@ -1,7 +1,8 @@
 package main
 
-import "github.com/MShoaei/NewsMiner/agencies"
+import "github.com/MShoaei/NewsMiner/bots"
 
 func main() {
-	agencies.YJCExtract()
+	// bots.YJCExtract()
+	bots.FarsNewsExtract()
 }
