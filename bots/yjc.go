@@ -49,7 +49,7 @@ func YJCExtract() {
 		data.Title = ""
 		data.Summary = ""
 		data.Text = ""
-		data.Tags = []string{}
+		data.Tags = nil
 		data.Code = ""
 		data.DateTime = ""
 		data.NewsAgency = ""
