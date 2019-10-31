@@ -4,5 +4,6 @@ import "github.com/MShoaei/NewsMiner/bots"
 
 func main() {
 	// bots.YJCExtract()
-	bots.FarsNewsExtract()
+	// bots.FarsNewsExtract()
+	bots.TabnakExtract()
 }
