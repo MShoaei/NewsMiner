@@ -19,7 +19,8 @@ func TasnimExtract() {
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
 		colly.URLFilters(
-			regexp.MustCompile(`https://www\.tasnimnews\.com(|/fa/news/\d+.*)$`),
+			// regexp.MustCompile(`https://www\.tasnimnews\.com(|/fa/news/\d+.*)$`),
+			regexp.MustCompile(`https://www\.tasnimnews\.com`),
 		),
 		// colly.Async(true),
 		colly.Debugger(&debug.LogDebugger{}),
