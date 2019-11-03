@@ -6,5 +6,6 @@ func main() {
 	// bots.YJCExtract()
 	// bots.FarsNewsExtract()
 	// bots.TabnakExtract()
-	bots.TasnimExtract()
+	// bots.TasnimExtract()
+	bots.ISNAExtract()
 }
