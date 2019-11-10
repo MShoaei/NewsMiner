@@ -79,7 +79,7 @@ func ISNAExtract() {
 	})
 
 	//news body
-	detailExtractor.OnHTML(".item-text p", func(e *colly.HTMLElement) {
+	detailExtractor.OnHTML("div[itemprop=articleBody]", func(e *colly.HTMLElement) {
 		data.Text = strings.TrimSpace(e.Text)
 	})
 
