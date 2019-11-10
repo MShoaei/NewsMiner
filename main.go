@@ -8,4 +8,5 @@ func main() {
 	// bots.TabnakExtract()
 	// bots.TasnimExtract()
 	bots.ISNAExtract()
+	// bots.BBCExtract()
 }
