@@ -16,6 +16,8 @@ import (
 // TasnimExtract starts a bot for https://www.tasnimnews.com
 func TasnimExtract() {
 	var data *NewsData = &NewsData{}
+	collection := getDatabaseCollection("Tasnim")
+
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
 		colly.URLFilters(
@@ -102,16 +104,11 @@ func TasnimExtract() {
 	})
 
 	detailExtractor.OnScraped(func(r *colly.Response) {
-		var err error
 		data.NewsAgency = "خبرگزاری تسنیم"
-		// data.DateTime = strings.ReplaceAll(data.DateTime, "\u00a0", " ")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_, err = collection.InsertOne(ctx, data)
-		if err != nil {
-			log.Fatal(err)
-		}
+		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
 	linkExtractor.Visit("https://www.tasnimnews.com")

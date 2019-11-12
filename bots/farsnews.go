@@ -10,12 +10,46 @@ import (
 	"github.com/gocolly/colly"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/x/bsonx"
 )
+
+func initFarsNewsDB() (collection *mongo.Collection) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	collection = client.Database("FarsNews").Collection(time.Now().Format("02-Jan-06-15:04-MST"))
+
+	c, err := collection.Indexes().List(ctx)
+	defer c.Close(ctx)
+	key := bson.M{}
+	exists := false
+	for c.Next(ctx) {
+		err = c.Decode(&key)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println(key)
+		if key["name"] == "code_1" {
+			exists = true
+		}
+	}
+	if !exists {
+		keys := bsonx.Doc{bsonx.Elem{Key: "code", Value: bsonx.Int32(1)}}
+		indexOpts := options.Index().SetUnique(true)
+		_, err := collection.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: keys, Options: indexOpts})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return
+}
 
 // FarsNewsExtract starts a bot for https://www.farsnews.com
 func FarsNewsExtract() {
-	// var tags []string = make([]string, 16)
 	var data *NewsData = &NewsData{}
+	collection := initFarsNewsDB()
+
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
 		colly.URLFilters(
@@ -109,7 +143,7 @@ func FarsNewsExtract() {
 		defer cancel()
 		_, err = collection.InsertOne(ctx, data)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 		}
 		log.Println("Scraped:", r.Request.URL.String())
 	})

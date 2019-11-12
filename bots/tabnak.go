@@ -16,6 +16,8 @@ import (
 // TabnakExtract starts a bot for https://www.tabnak.ir
 func TabnakExtract() {
 	var data *NewsData = &NewsData{}
+	collection := getDatabaseCollection("Tabnak")
+
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
 		colly.URLFilters(
@@ -101,16 +103,11 @@ func TabnakExtract() {
 	})
 
 	detailExtractor.OnScraped(func(r *colly.Response) {
-		var err error
 		data.NewsAgency = "خبرگزاری تابناک"
-		// data.DateTime = strings.ReplaceAll(data.DateTime, "\u00a0", " ")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_, err = collection.InsertOne(ctx, data)
-		if err != nil {
-			log.Fatal(err)
-		}
+		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
 	linkExtractor.Visit("https://www.tabnak.ir")

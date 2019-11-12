@@ -15,6 +15,8 @@ import (
 // YJCExtract starts a bot for https://www.yjc.ir
 func YJCExtract() {
 	var data *NewsData = &NewsData{}
+	collection := getDatabaseCollection("YJC")
+
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(2),
 		colly.URLFilters(
@@ -93,6 +95,7 @@ func YJCExtract() {
 
 	detailExtractor.OnScraped(func(r *colly.Response) {
 		data.NewsAgency = "باشگاه خبرنگاران جوان"
+
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 		collection.InsertOne(ctx, data)

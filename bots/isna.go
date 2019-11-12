@@ -16,6 +16,8 @@ import (
 // ISNAExtract starts a bot for https://www.isna.ir
 func ISNAExtract() {
 	var data *NewsData = &NewsData{}
+	collection := getDatabaseCollection("ISNA")
+
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
 		colly.URLFilters(
@@ -108,15 +110,11 @@ func ISNAExtract() {
 	})
 
 	detailExtractor.OnScraped(func(r *colly.Response) {
-		var err error
 		data.NewsAgency = "خبرگزاری ایسنا"
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_, err = collection.InsertOne(ctx, data)
-		if err != nil {
-			log.Fatal(err)
-		}
+		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
 	linkExtractor.Visit("https://www.isna.ir")

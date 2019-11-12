@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	client     *mongo.Client
-	db         *mongo.Database
-	collection *mongo.Collection
+	client *mongo.Client
+	// db         *mongo.Database
+	// collection *mongo.Collection
 )
 
 func init() {
@@ -32,8 +32,13 @@ func init() {
 		log.Println(err)
 		os.Exit(-1)
 	}
-	db = client.Database("News")
-	collection = db.Collection("data")
+}
+
+func getDatabaseCollection(db string) (collection *mongo.Collection) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	collection = client.Database(db).Collection(time.Now().Format("02-Jan-06-15:04-MST"))
 
 	c, err := collection.Indexes().List(ctx)
 	defer c.Close(ctx)
@@ -57,4 +62,5 @@ func init() {
 			log.Fatal(err)
 		}
 	}
+	return
 }
