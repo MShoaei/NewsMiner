@@ -82,8 +82,10 @@ func BBCExtract() {
 	})
 
 	//news body
-	detailExtractor.OnHTML(`p[class=""]`, func(e *colly.HTMLElement) {
-		s.WriteString(strings.TrimSpace(e.Text))
+	detailExtractor.OnHTML(`div[class="story-body__inner"] p`, func(e *colly.HTMLElement) {
+		if e.Attr("class") == "" {
+			s.WriteString(strings.TrimSpace(e.Text))
+		}
 	})
 
 	// news code
@@ -104,6 +106,7 @@ func BBCExtract() {
 		defer cancel()
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
+		s.Reset()
 	})
 	linkExtractor.Visit("https://www.bbc.com/persian")
 	// linkExtractor.Wait()
