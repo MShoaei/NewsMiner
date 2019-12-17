@@ -26,7 +26,8 @@ func BBCExtract() {
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
 		fmt.Sprintf("--out=./bbc/bbc%s", collection.Name()))
-	go Log(cmd)
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	s := strings.Builder{}
 	s.Grow(10000)
@@ -120,4 +121,5 @@ func BBCExtract() {
 	})
 	linkExtractor.Visit("https://www.bbc.com/persian")
 	// linkExtractor.Wait()
+	done <- struct{}{}
 }

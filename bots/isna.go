@@ -26,7 +26,8 @@ func ISNAExtract() {
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
 		fmt.Sprintf("--out=./isna/isna%s", collection.Name()))
-	go Log(cmd)
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -129,4 +130,5 @@ func ISNAExtract() {
 	})
 	linkExtractor.Visit("https://www.isna.ir")
 	// linkExtractor.Wait()
+	done <- struct{}{}
 }

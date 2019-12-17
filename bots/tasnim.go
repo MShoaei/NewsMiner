@@ -26,7 +26,8 @@ func TasnimExtract() {
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
 		fmt.Sprintf("--out=./tasnim/tasnim%s", collection.Name()))
-	go Log(cmd)
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -123,4 +124,5 @@ func TasnimExtract() {
 	})
 	linkExtractor.Visit("https://www.tasnimnews.com")
 	// linkExtractor.Wait()
+	done <- struct{}{}
 }

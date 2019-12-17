@@ -26,7 +26,8 @@ func YJCExtract() {
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
 		fmt.Sprintf("--out=./yjc/yjc%s", collection.Name()))
-	go Log(cmd)
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(2),
@@ -114,5 +115,5 @@ func YJCExtract() {
 	})
 	linkExtractor.Visit("https://www.yjc.ir")
 	// linkExtractor.Wait()
-
+	done <- struct{}{}
 }

@@ -26,7 +26,8 @@ func TabnakExtract() {
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
 		fmt.Sprintf("--out=./tabnak/tabnak%s", collection.Name()))
-	go Log(cmd)
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -122,4 +123,5 @@ func TabnakExtract() {
 	})
 	linkExtractor.Visit("https://www.tabnak.ir")
 	// linkExtractor.Wait()
+	done <- struct{}{}
 }
