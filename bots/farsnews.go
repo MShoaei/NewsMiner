@@ -2,7 +2,9 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -10,45 +12,21 @@ import (
 	"github.com/gocolly/colly"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.mongodb.org/mongo-driver/x/bsonx"
 )
-
-func initFarsNewsDB() (collection *mongo.Collection) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	collection = client.Database("FarsNews").Collection(time.Now().Format("02-Jan-06-15:04-MST"))
-
-	c, err := collection.Indexes().List(ctx)
-	defer c.Close(ctx)
-	key := bson.M{}
-	exists := false
-	for c.Next(ctx) {
-		err = c.Decode(&key)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println(key)
-		if key["name"] == "code_1" {
-			exists = true
-		}
-	}
-	if !exists {
-		keys := bsonx.Doc{bsonx.Elem{Key: "code", Value: bsonx.Int32(1)}}
-		indexOpts := options.Index().SetUnique(true)
-		_, err := collection.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: keys, Options: indexOpts})
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	return
-}
 
 // FarsNewsExtract starts a bot for https://www.farsnews.com
 func FarsNewsExtract() {
 	var data *NewsData = &NewsData{}
-	collection := initFarsNewsDB()
+	collection := getDatabaseCollection("Farsnews")
+
+	var cmd = exec.Command("mongoexport",
+		"--uri=mongodb://localhost:27017/Farsnews",
+		fmt.Sprintf("--collection=%s", collection.Name()),
+		"--type=csv",
+		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
+		fmt.Sprintf("--out=./Farsnews/Farsnews%s", collection.Name()))
+	done := make(chan struct{})
+	go Log(cmd, done)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -149,4 +127,5 @@ func FarsNewsExtract() {
 	})
 	linkExtractor.Visit("https://www.farsnews.com")
 	// linkExtractor.Wait()
+	done <- struct{}{}
 }
