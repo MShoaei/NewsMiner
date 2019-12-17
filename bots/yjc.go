@@ -2,7 +2,9 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -15,7 +17,16 @@ import (
 // YJCExtract starts a bot for https://www.yjc.ir
 func YJCExtract() {
 	var data *NewsData = &NewsData{}
+
 	collection := getDatabaseCollection("YJC")
+
+	var cmd = exec.Command("mongoexport",
+		"--uri=mongodb://localhost:27017/YJC",
+		fmt.Sprintf("--collection=%s", collection.Name()),
+		"--type=csv",
+		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
+		fmt.Sprintf("--out=./yjc/yjc%s", collection.Name()))
+	go Log(cmd)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(2),
@@ -103,4 +114,5 @@ func YJCExtract() {
 	})
 	linkExtractor.Visit("https://www.yjc.ir")
 	// linkExtractor.Wait()
+
 }

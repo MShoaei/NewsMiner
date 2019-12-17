@@ -2,7 +2,9 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -17,6 +19,14 @@ import (
 func TabnakExtract() {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("Tabnak")
+
+	var cmd = exec.Command("mongoexport",
+		"--uri=mongodb://localhost:27017/Tabnak",
+		fmt.Sprintf("--collection=%s", collection.Name()),
+		"--type=csv",
+		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
+		fmt.Sprintf("--out=./tabnak/tabnak%s", collection.Name()))
+	go Log(cmd)
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),

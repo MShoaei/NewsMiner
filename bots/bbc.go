@@ -2,7 +2,9 @@ package bots
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -17,6 +19,14 @@ import (
 func BBCExtract() {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("BBC")
+
+	var cmd = exec.Command("mongoexport",
+		"--uri=mongodb://localhost:27017/BBC",
+		fmt.Sprintf("--collection=%s", collection.Name()),
+		"--type=csv",
+		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
+		fmt.Sprintf("--out=./bbc/bbc%s", collection.Name()))
+	go Log(cmd)
 
 	s := strings.Builder{}
 	s.Grow(10000)
