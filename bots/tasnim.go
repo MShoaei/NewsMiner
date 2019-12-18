@@ -16,7 +16,7 @@ import (
 )
 
 // TasnimExtract starts a bot for https://www.tasnimnews.com
-func TasnimExtract() {
+func TasnimExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("Tasnim")
 
@@ -25,9 +25,9 @@ func TasnimExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./tasnim/tasnim%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./tasnim/tasnim%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -124,5 +124,4 @@ func TasnimExtract() {
 	})
 	linkExtractor.Visit("https://www.tasnimnews.com")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }

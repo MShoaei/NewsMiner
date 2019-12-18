@@ -16,7 +16,7 @@ import (
 )
 
 // BBCExtract starts a bot for https://www.bbc.com/persian
-func BBCExtract() {
+func BBCExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("BBC")
 
@@ -25,9 +25,9 @@ func BBCExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./bbc/bbc%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./bbc/bbc%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	s := strings.Builder{}
 	s.Grow(10000)
@@ -121,5 +121,4 @@ func BBCExtract() {
 	})
 	linkExtractor.Visit("https://www.bbc.com/persian")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }

@@ -15,7 +15,7 @@ import (
 )
 
 // YJCExtract starts a bot for https://www.yjc.ir
-func YJCExtract() {
+func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 
 	collection := getDatabaseCollection("YJC")
@@ -25,9 +25,9 @@ func YJCExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./yjc/yjc%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./yjc/yjc%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(2),
@@ -115,5 +115,4 @@ func YJCExtract() {
 	})
 	linkExtractor.Visit("https://www.yjc.ir")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }

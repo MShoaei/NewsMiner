@@ -16,7 +16,7 @@ import (
 )
 
 // ISNAExtract starts a bot for https://www.isna.ir
-func ISNAExtract() {
+func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("ISNA")
 
@@ -25,9 +25,9 @@ func ISNAExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./isna/isna%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./isna/isna%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -130,5 +130,4 @@ func ISNAExtract() {
 	})
 	linkExtractor.Visit("https://www.isna.ir")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }

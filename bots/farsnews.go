@@ -15,7 +15,7 @@ import (
 )
 
 // FarsNewsExtract starts a bot for https://www.farsnews.com
-func FarsNewsExtract() {
+func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("Farsnews")
 
@@ -24,9 +24,9 @@ func FarsNewsExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./Farsnews/Farsnews%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./farsnews/farsnews%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -127,5 +127,4 @@ func FarsNewsExtract() {
 	})
 	linkExtractor.Visit("https://www.farsnews.com")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }

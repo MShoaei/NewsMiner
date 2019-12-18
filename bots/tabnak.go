@@ -16,7 +16,7 @@ import (
 )
 
 // TabnakExtract starts a bot for https://www.tabnak.ir
-func TabnakExtract() {
+func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 	collection := getDatabaseCollection("Tabnak")
 
@@ -25,9 +25,9 @@ func TabnakExtract() {
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./tabnak/tabnak%s", collection.Name()))
-	done := make(chan struct{})
-	go Log(cmd, done)
+		fmt.Sprintf("--out=./tabnak/tabnak%s.csv", collection.Name()),
+	)
+	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(3),
@@ -123,5 +123,4 @@ func TabnakExtract() {
 	})
 	linkExtractor.Visit("https://www.tabnak.ir")
 	// linkExtractor.Wait()
-	done <- struct{}{}
 }
