@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -30,21 +29,24 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(3),
+		colly.MaxDepth(7),
 		colly.URLFilters(
-			regexp.MustCompile(`https://www\.tabnak\.ir(|/fa/news/\d+.*)$`),
+			//regexp.MustCompile(`https://www\.tabnak\.ir(|/fa/news/\d+.*)$`),
+			regexp.MustCompile(`http(|s)://www\.tabnak\.ir`),
+			regexp.MustCompile(`http://ostanha\.tabnak\.ir`),
+			//regexp.MustCompile(`http://(|www\.)tabnak\w+\.ir`),
 		),
 		// colly.Async(true),
-		colly.Debugger(&debug.LogDebugger{}),
+		//colly.Debugger(&debug.LogDebugger{}),
 	)
-	newsRegex := regexp.MustCompile(`https://www\.tabnak\.ir/fa/news/\d+/.*`)
+	newsRegex := regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{6}`)
 
 	detailExtractor := linkExtractor.Clone()
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
 
 	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		// log.Println(e.Attr("href"))
+		//log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()

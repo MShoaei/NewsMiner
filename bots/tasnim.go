@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -30,13 +29,13 @@ func TasnimExtract(exportCmd chan<- *exec.Cmd) {
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(3),
+		colly.MaxDepth(8),
 		colly.URLFilters(
 			// regexp.MustCompile(`https://www\.tasnimnews\.com(|/fa/news/\d+.*)$`),
 			regexp.MustCompile(`https://www\.tasnimnews\.com`),
 		),
 		// colly.Async(true),
-		colly.Debugger(&debug.LogDebugger{}),
+		//colly.Debugger(&debug.LogDebugger{}),
 	)
 	newsRegex := regexp.MustCompile(`https://www\.tasnimnews\.com/fa/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{7}`)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -30,13 +29,14 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(3),
+		colly.MaxDepth(7),
 		colly.URLFilters(
-			// regexp.MustCompile(`https://www\.isna\.ir(|/news/\d+.*)$`),
+			//regexp.MustCompile(`https://www\.isna\.ir(|/news/\d+.*)$`),
 			regexp.MustCompile(`https://www\.isna\.ir`),
 		),
+		//colly.DisallowedDomains("leader.ir","imam-khomeini.ir", "president.ir", "parliran.ir"),
 		// colly.Async(true),
-		colly.Debugger(&debug.LogDebugger{}),
+		//colly.Debugger(&debug.LogDebugger{}),
 	)
 	newsRegex := regexp.MustCompile(`https://www\.isna\.ir/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{11}`)
@@ -45,7 +45,7 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
 
 	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		log.Println(e.Attr("href"))
+		//log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()

@@ -29,9 +29,9 @@ func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(3),
+		colly.MaxDepth(6),
 		colly.URLFilters(
-			regexp.MustCompile(`https://www\.farsnews\.com(|/news/\d+.*)$`),
+			//regexp.MustCompile(`https://www\.farsnews\.com(|/news/\d+.*)$`),
 		),
 		// colly.Async(true),
 		// colly.Debugger(&debug.LogDebugger{}),

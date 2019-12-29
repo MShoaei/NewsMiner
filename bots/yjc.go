@@ -30,9 +30,10 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(2),
+		colly.MaxDepth(7),
 		colly.URLFilters(
 			regexp.MustCompile(`https://www\.yjc\.ir(|/fa/news/\d+.*)$`),
+			regexp.MustCompile(`https://www\.yjc\.ir/fa/.+`),
 		),
 		// colly.Async(true),
 		// colly.Debugger(&debug.LogDebugger{}),
@@ -44,6 +45,7 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
 
 	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
