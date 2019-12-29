@@ -23,7 +23,7 @@ func init() {
 	var err error
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://miner:password@localhost:27017/News?authSource=admin&compressors=disabled&gssapiServiceName=mongodb"))
+	client, err = mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017/?compressors=disabled&gssapiServiceName=mongodb"))
 	if err != nil {
 		log.Print(err)
 		os.Exit(-1)
