@@ -45,6 +45,7 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 
 	detailExtractor := colly.NewCollector()
 	detailExtractor.MaxDepth = 1
+	detailExtractor.Async = true
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 8})
 
 	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
