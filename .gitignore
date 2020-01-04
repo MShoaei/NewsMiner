@@ -2,3 +2,9 @@ vendor/
 data/
 .idea/
 .vscode/
+
+*.7z
+*.tar
+*.log
+*.html
+*.csv
