@@ -20,10 +20,20 @@ mongo "localhost/News" \
 --password "password"
 ```
 
+extract data as CSV:
+
+```bash
+mongoexport --uri="mongodb://localhost:27017/Farsnews" \
+--collection="farsnews" \
+--type=csv
+--fields=title,summary,text,tags,code,datetime,newsagency,reporter
+--out="./farsnews/farsnews.csv"
+```
+
 extract data as json:
 
 ```bash
-mongoexport --uri="mongodb://miner:password@localhost:27017/News?authSource=admin" \
+mongoexport --uri="mongodb://localhost:27017/Farsnews" \
 --collection="data" \
 --out="data.json"
 ```
