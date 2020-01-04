@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -40,6 +41,39 @@ func getDatabaseCollection(db string) (collection *mongo.Collection) {
 
 	collection = client.Database(db).Collection(time.Now().Format("02-Jan-06-15:04-MST"))
 
+	c, err := collection.Indexes().List(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer c.Close(ctx)
+	key := bson.M{}
+	exists := false
+	for c.Next(ctx) {
+		err = c.Decode(&key)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Println(key)
+		if key["name"] == "code_1" {
+			exists = true
+		}
+	}
+	if !exists {
+		keys := bsonx.Doc{bsonx.Elem{Key: "code", Value: bsonx.Int32(1)}}
+		indexOpts := options.Index().SetUnique(true)
+		_, err := collection.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: keys, Options: indexOpts})
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	return
+}
+
+func collectionInit(db string) (collection *mongo.Collection) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	collection = client.Database(db).Collection(strings.ToLower(db))
 	c, err := collection.Indexes().List(ctx)
 	defer c.Close(ctx)
 	key := bson.M{}
