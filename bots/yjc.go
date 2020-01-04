@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -18,34 +20,35 @@ import (
 func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	var data *NewsData = &NewsData{}
 
-	collection := getDatabaseCollection("YJC")
+	//collection := getDatabaseCollection("YJC")
+	collection := collectionInit("YJC")
 
 	var cmd = exec.Command("mongoexport",
 		"--uri=mongodb://localhost:27017/YJC",
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./yjc/yjc%s.csv", collection.Name()),
+		fmt.Sprintf("--out=./yjc/%s.csv", collection.Name()),
 	)
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(7),
+		colly.MaxDepth(1),
 		colly.URLFilters(
-			regexp.MustCompile(`https://www\.yjc\.ir(|/fa/news/\d+.*)$`),
-			regexp.MustCompile(`https://www\.yjc\.ir/fa/.+`),
+			regexp.MustCompile(``),
 		),
 		// colly.Async(true),
-		// colly.Debugger(&debug.LogDebugger{}),
+		colly.Debugger(&debug.LogDebugger{}),
 	)
 	newsRegex := regexp.MustCompile(`https://www\.yjc\.ir/fa/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{7}`)
 
-	detailExtractor := linkExtractor.Clone()
-	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
+	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 8})
 
 	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		log.Println(e.Attr("href"))
+		//log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
@@ -67,7 +70,7 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
-		e.Request.Visit(e.Attr("href"))
+		//e.Request.Visit(e.Attr("href"))
 	})
 
 	detailExtractor.OnRequest(func(r *colly.Request) {
@@ -115,6 +118,11 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-	linkExtractor.Visit("https://www.yjc.ir")
-	// linkExtractor.Wait()
+
+	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 1300})
+
+	for i := 1; i < 1200; i++ {
+		q.AddURL(fmt.Sprintf("https://www.yjc.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1390/01/01&to_date=1398/10/14&p=%d", i))
+	}
+	q.Run(linkExtractor)
 }

@@ -9,43 +9,52 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gocolly/colly/queue"
+
 	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/debug"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // ISNAExtract starts a bot for https://www.isna.ir
 func ISNAExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData = &NewsData{}
-	collection := getDatabaseCollection("ISNA")
+	var data *NewsData
+
+	//collection := getDatabaseCollection("ISNA")
+	collection := collectionInit("ISNA")
 
 	var cmd = exec.Command("mongoexport",
 		"--uri=mongodb://localhost:27017/ISNA",
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./isna/isna%s.csv", collection.Name()),
+		fmt.Sprintf("--out=./isna/%s.csv", collection.Name()),
 	)
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(7),
+		colly.MaxDepth(1),
 		colly.URLFilters(
 			//regexp.MustCompile(`https://www\.isna\.ir(|/news/\d+.*)$`),
-			regexp.MustCompile(`https://www\.isna\.ir`),
+			regexp.MustCompile(`https://www\.isna\.ir/page/archive\.xhtml.*`),
 		),
 		//colly.DisallowedDomains("leader.ir","imam-khomeini.ir", "president.ir", "parliran.ir"),
-		// colly.Async(true),
-		//colly.Debugger(&debug.LogDebugger{}),
+		//colly.Async(true),
+		colly.Debugger(&debug.LogDebugger{}),
 	)
+
+	linkExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
+
 	newsRegex := regexp.MustCompile(`https://www\.isna\.ir/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{11}`)
 
-	detailExtractor := linkExtractor.Clone()
-	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
+	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
 
-	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		//log.Println(e.Attr("href"))
+	linkExtractor.OnHTML(".items li a[href]", func(e *colly.HTMLElement) {
+		log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
@@ -61,24 +70,19 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 			if err != nil && err != mongo.ErrNoDocuments {
 				log.Fatal(err)
 			}
+			//code := checkNewsCode(e,codeRegex,collection)
+			//if code == "" {
 			if code.Code == "" {
-				// go detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
+				fmt.Println(e.Request.AbsoluteURL(e.Attr("href")))
 				detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
-		e.Request.Visit(e.Attr("href"))
+		//e.Request.Visit(e.Attr("href"))
 	})
 
 	detailExtractor.OnRequest(func(r *colly.Request) {
-		data.Title = ""
-		data.Summary = ""
-		data.Text = ""
-		data.Tags = make([]string, 0, 16)
-		data.Code = ""
-		data.DateTime = ""
-		data.NewsAgency = ""
-		data.Reporter = ""
+		data = &NewsData{}
 	})
 
 	// news title
@@ -128,6 +132,10 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-	linkExtractor.Visit("https://www.isna.ir")
-	// linkExtractor.Wait()
+
+	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 700})
+	for i := 1; i < 600; i++ {
+		q.AddURL(fmt.Sprintf("https://www.isna.ir/page/archive.xhtml?mn=7&wide=0&dy=20&ms=0&pi=%d&yr=1397", i))
+	}
+	q.Run(linkExtractor)
 }

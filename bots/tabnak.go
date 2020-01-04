@@ -10,43 +10,51 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // TabnakExtract starts a bot for https://www.tabnak.ir
 func TabnakExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData = &NewsData{}
-	collection := getDatabaseCollection("Tabnak")
+	var data *NewsData
+
+	//collection := getDatabaseCollection("Tabnak")
+	collection := collectionInit("Tabnak")
 
 	var cmd = exec.Command("mongoexport",
 		"--uri=mongodb://localhost:27017/Tabnak",
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./tabnak/tabnak%s.csv", collection.Name()),
+		fmt.Sprintf("--out=./tabnak/%s.csv", collection.Name()),
 	)
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(7),
+		colly.MaxDepth(1),
 		colly.URLFilters(
 			//regexp.MustCompile(`https://www\.tabnak\.ir(|/fa/news/\d+.*)$`),
-			regexp.MustCompile(`http(|s)://www\.tabnak\.ir`),
-			regexp.MustCompile(`http://ostanha\.tabnak\.ir`),
+			//regexp.MustCompile(`http(|s)://www\.tabnak\.ir`),
+			//regexp.MustCompile(`http://ostanha\.tabnak\.ir`),
 			//regexp.MustCompile(`http://(|www\.)tabnak\w+\.ir`),
+			regexp.MustCompile(`https://www.tabnak.ir/fa/archive.*`),
 		),
-		// colly.Async(true),
-		//colly.Debugger(&debug.LogDebugger{}),
+		//colly.Async(true),
+		colly.Debugger(&debug.LogDebugger{}),
 	)
+
 	newsRegex := regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
 	codeRegex := regexp.MustCompile(`\d{6}`)
 
-	detailExtractor := linkExtractor.Clone()
-	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
+	detailExtractor.Async = true
+	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 8})
 
-	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		//log.Println(e.Attr("href"))
+	linkExtractor.OnHTML(".linear_news a[href]", func(e *colly.HTMLElement) {
+		log.Println(e.Attr("href"))
 		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
@@ -63,23 +71,16 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 				log.Fatal(err)
 			}
 			if code.Code == "" {
-				// go detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
+				fmt.Println(e.Request.AbsoluteURL(e.Attr("href")))
 				detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
-		e.Request.Visit(e.Attr("href"))
+		//e.Request.Visit(e.Attr("href"))
 	})
 
 	detailExtractor.OnRequest(func(r *colly.Request) {
-		data.Title = ""
-		data.Summary = ""
-		data.Text = ""
-		data.Tags = make([]string, 0, 16)
-		data.Code = ""
-		data.DateTime = ""
-		data.NewsAgency = ""
-		data.Reporter = ""
+		data = &NewsData{}
 	})
 
 	// news title
@@ -123,6 +124,10 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-	linkExtractor.Visit("https://www.tabnak.ir")
-	// linkExtractor.Wait()
+
+	q, _ := queue.New(3, &queue.InMemoryQueueStorage{MaxSize: 1300})
+	for i := 1; i < 1200; i++ {
+		q.AddURL(fmt.Sprintf("https://www.tabnak.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1384/01/01&to_date=1398/10/13&p=%d", i))
+	}
+	q.Run(linkExtractor)
 }
