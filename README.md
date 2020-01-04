@@ -8,8 +8,6 @@ NewsMiner is a web crawler to extract data from Persian news websites.
 mkdir data
 docker run -d --name NewsMinerdb \
     -p 27017:27017 -v $(pwd)/data:/data/db \
-    -e MONGO_INITDB_ROOT_USERNAME=miner \
-    -e MONGO_INITDB_ROOT_PASSWORD=password \
     mongo:4
 ```
 
