@@ -16,11 +16,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+var (
+	tabnakNewsRegex = regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
+	tabnakCodeRegex = regexp.MustCompile(`\d{6}`)
+)
+
 // TabnakExtract starts a bot for https://www.tabnak.ir
 func TabnakExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData
-
-	//collection := getDatabaseCollection("Tabnak")
 	collection := collectionInit("Tabnak")
 
 	var cmd = exec.Command("mongoexport",
@@ -35,32 +37,20 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(1),
 		colly.URLFilters(
-			//regexp.MustCompile(`https://www\.tabnak\.ir(|/fa/news/\d+.*)$`),
-			//regexp.MustCompile(`http(|s)://www\.tabnak\.ir`),
-			//regexp.MustCompile(`http://ostanha\.tabnak\.ir`),
-			//regexp.MustCompile(`http://(|www\.)tabnak\w+\.ir`),
 			regexp.MustCompile(`https://www.tabnak.ir/fa/archive.*`),
 		),
 		//colly.Async(true),
 		colly.Debugger(&debug.LogDebugger{}),
 	)
 
-	newsRegex := regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
-	codeRegex := regexp.MustCompile(`\d{6}`)
-
-	detailExtractor := colly.NewCollector()
-	detailExtractor.MaxDepth = 1
-	detailExtractor.Async = true
-	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 8})
-
 	linkExtractor.OnHTML(".linear_news a[href]", func(e *colly.HTMLElement) {
 		log.Println(e.Attr("href"))
-		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
+		if tabnakNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
 			partialURL := e.Attr("href")
-			filter := bson.M{"code": codeRegex.FindString(partialURL)}
+			filter := bson.M{"code": tabnakCodeRegex.FindString(partialURL)}
 			res := collection.FindOne(ctx, filter)
 
 			code := struct {
@@ -71,16 +61,35 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 				log.Fatal(err)
 			}
 			if code.Code == "" {
-				fmt.Println(e.Request.AbsoluteURL(e.Attr("href")))
-				detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
+				d := &NewsData{}
+				extractor := newTabnakDetailExtractor(d, collection)
+				extractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
 		//e.Request.Visit(e.Attr("href"))
 	})
 
+	q, _ := queue.New(6, &queue.InMemoryQueueStorage{MaxSize: 1300})
+	for i := 1; i < 1200; i++ {
+		q.AddURL(fmt.Sprintf("https://www.tabnak.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1384/01/01&to_date=1398/10/13&p=%d", i))
+	}
+	q.Run(linkExtractor)
+}
+
+func newTabnakDetailExtractor(data *NewsData,
+	collection *mongo.Collection) *colly.Collector {
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
 	detailExtractor.OnRequest(func(r *colly.Request) {
-		data = &NewsData{}
+		data.Title = ""
+		data.Summary = ""
+		data.Text = ""
+		data.Tags = make([]string, 0, 8)
+		data.Code = ""
+		data.DateTime = ""
+		data.NewsAgency = ""
+		data.Reporter = ""
 	})
 
 	// news title
@@ -105,14 +114,11 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 
 	// news code
 	detailExtractor.OnResponse(func(r *colly.Response) {
-		// fmt.Println(strings.Split(e.Text, ":")[1])
-		// data.Code = strings.TrimSpace(strings.Split(e.Text, ":")[1])
-		data.Code = codeRegex.FindString(r.Request.URL.String())
+		data.Code = tabnakCodeRegex.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
 	detailExtractor.OnHTML(".fa_date", func(e *colly.HTMLElement) {
-		// fmt.Println(strings.Split(e.Text, ":")[1])
 		data.DateTime = strings.TrimSpace(e.Text)
 	})
 
@@ -121,13 +127,11 @@ func TabnakExtract(exportCmd chan<- *exec.Cmd) {
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		collection.InsertOne(ctx, data)
+		_, err := collection.InsertOne(ctx, data)
+		if err != nil {
+			log.Fatal(err)
+		}
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-
-	q, _ := queue.New(3, &queue.InMemoryQueueStorage{MaxSize: 1300})
-	for i := 1; i < 1200; i++ {
-		q.AddURL(fmt.Sprintf("https://www.tabnak.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1384/01/01&to_date=1398/10/13&p=%d", i))
-	}
-	q.Run(linkExtractor)
+	return detailExtractor
 }

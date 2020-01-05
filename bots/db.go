@@ -17,7 +17,6 @@ import (
 var (
 	client *mongo.Client
 	// db         *mongo.Database
-	// collection *mongo.Collection
 )
 
 func init() {

@@ -10,46 +10,47 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+var (
+	farsnewsNewsRegex = regexp.MustCompile(`https://www\.farsnews\.com/.*news/\d+/.*`)
+	farsnewsCodeRegex = regexp.MustCompile(`\d{14}`)
+)
+
 // FarsNewsExtract starts a bot for https://www.farsnews.com
 func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData = &NewsData{}
-	collection := getDatabaseCollection("Farsnews")
+	collection := collectionInit("Farsnews")
 
 	var cmd = exec.Command("mongoexport",
 		"--uri=mongodb://localhost:27017/Farsnews",
 		fmt.Sprintf("--collection=%s", collection.Name()),
 		"--type=csv",
 		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./farsnews/farsnews%s.csv", collection.Name()),
+		fmt.Sprintf("--out=./farsnews/%s.csv", collection.Name()),
 	)
 	exportCmd <- cmd
 
 	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(6),
+		colly.MaxDepth(1),
 		colly.URLFilters(
-			//regexp.MustCompile(`https://www\.farsnews\.com(|/news/\d+.*)$`),
+		//regexp.MustCompile(`https://www\.farsnews\.com(|/news/\d+.*)$`),
 		),
 		// colly.Async(true),
-		// colly.Debugger(&debug.LogDebugger{}),
+		colly.Debugger(&debug.LogDebugger{}),
 	)
-	newsRegex := regexp.MustCompile(`https://www\.farsnews\.com/news/\d+/.*`)
-	codeRegex := regexp.MustCompile(`\d{14}`)
 
-	detailExtractor := linkExtractor.Clone()
-	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
-
-	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
+	linkExtractor.OnHTML("li.media>a[href]", func(e *colly.HTMLElement) {
 		// log.Println(e.Attr("href"))
-		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
+		if farsnewsNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
 			partialURL := e.Attr("href")
-			filter := bson.M{"code": codeRegex.FindString(partialURL)}
+			filter := bson.M{"code": farsnewsCodeRegex.FindString(partialURL)}
 			res := collection.FindOne(ctx, filter)
 
 			code := struct {
@@ -60,14 +61,30 @@ func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 				log.Fatal(err)
 			}
 			if code.Code == "" {
-				// go detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
-				detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
+				d := &NewsData{}
+				extractor := newFarsnewsDetailExtractor(d, collection)
+				extractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
-		e.Request.Visit(e.Attr("href"))
+		// e.Request.Visit(e.Attr("href"))
 	})
 
+	q, _ := queue.New(6, &queue.InMemoryQueueStorage{MaxSize: 1200})
+	for month := 10; month > 0; month-- {
+		for day := 15; day > 0; day-- {
+			for i := 1; i < 31; i++ {
+				q.AddURL(fmt.Sprintf("https://www.farsnews.com/archive?cat=-1&subcat=-1&date=1398%%2F%d%%2F%d&p=%d", month, day, i))
+			}
+		}
+	}
+	q.Run(linkExtractor)
+}
+
+func newFarsnewsDetailExtractor(data *NewsData,
+	collection *mongo.Collection) *colly.Collector {
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
 	detailExtractor.OnRequest(func(r *colly.Request) {
 		data.Title = ""
 		data.Summary = ""
@@ -101,30 +118,25 @@ func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 
 	// news code
 	detailExtractor.OnResponse(func(r *colly.Response) {
-		// fmt.Println(strings.Split(e.Text, ":")[1])
-		// data.Code = strings.TrimSpace(strings.Split(e.Text, ":")[1])
-		data.Code = codeRegex.FindString(r.Request.URL.String())
+		data.Code = farsnewsCodeRegex.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
 	detailExtractor.OnHTML(".publish-time span", func(e *colly.HTMLElement) {
-		// fmt.Println(strings.Split(e.Text, ":")[1])
-		data.DateTime += e.Text
+		data.DateTime = e.Text
 	})
 
 	detailExtractor.OnScraped(func(r *colly.Response) {
-		var err error
 		data.NewsAgency = "خبرگزاری فارس"
 		data.DateTime = strings.ReplaceAll(data.DateTime, "\u00a0", " ")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_, err = collection.InsertOne(ctx, data)
+		_, err := collection.InsertOne(ctx, data)
 		if err != nil {
-			log.Println(err)
+			log.Fatal(err)
 		}
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-	linkExtractor.Visit("https://www.farsnews.com")
-	// linkExtractor.Wait()
+	return detailExtractor
 }
