@@ -9,19 +9,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly/queue"
-
 	"github.com/gocolly/colly"
 	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+var (
+	isnaNewsRegex = regexp.MustCompile(`https://www\.isna\.ir/news/\d+/.*`)
+	isnaCodeRegex = regexp.MustCompile(`\d{11}`)
+)
+
 // ISNAExtract starts a bot for https://www.isna.ir
 func ISNAExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData
-
-	//collection := getDatabaseCollection("ISNA")
 	collection := collectionInit("ISNA")
 
 	var cmd = exec.Command("mongoexport",
@@ -44,23 +45,18 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 		colly.Debugger(&debug.LogDebugger{}),
 	)
 
-	linkExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 1})
-
-	newsRegex := regexp.MustCompile(`https://www\.isna\.ir/news/\d+/.*`)
-	codeRegex := regexp.MustCompile(`\d{11}`)
-
 	detailExtractor := colly.NewCollector()
 	detailExtractor.MaxDepth = 1
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5})
 
 	linkExtractor.OnHTML(".items li a[href]", func(e *colly.HTMLElement) {
 		log.Println(e.Attr("href"))
-		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
+		if isnaNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
 			partialURL := e.Attr("href")
-			filter := bson.M{"code": codeRegex.FindString(partialURL)}
+			filter := bson.M{"code": isnaCodeRegex.FindString(partialURL)}
 			res := collection.FindOne(ctx, filter)
 
 			code := struct {
@@ -81,8 +77,25 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 		//e.Request.Visit(e.Attr("href"))
 	})
 
+	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 700})
+	for i := 1; i < 600; i++ {
+		q.AddURL(fmt.Sprintf("https://www.isna.ir/page/archive.xhtml?mn=7&wide=0&dy=20&ms=0&pi=%d&yr=1397", i))
+	}
+	q.Run(linkExtractor)
+}
+
+func newISNANewsExtractor(data *NewsData, collection *mongo.Collection) *colly.Collector {
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
 	detailExtractor.OnRequest(func(r *colly.Request) {
-		data = &NewsData{}
+		data.Title = ""
+		data.Summary = ""
+		data.Text = ""
+		data.Tags = make([]string, 0, 8)
+		data.Code = ""
+		data.DateTime = ""
+		data.NewsAgency = ""
+		data.Reporter = ""
 	})
 
 	// news title
@@ -109,7 +122,7 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 	detailExtractor.OnResponse(func(r *colly.Response) {
 		// fmt.Println(strings.Split(e.Text, ":")[1])
 		// data.Code = strings.TrimSpace(strings.Split(e.Text, ":")[1])
-		data.Code = codeRegex.FindString(r.Request.URL.String())
+		data.Code = isnaCodeRegex.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
@@ -132,10 +145,5 @@ func ISNAExtract(exportCmd chan<- *exec.Cmd) {
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-
-	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 700})
-	for i := 1; i < 600; i++ {
-		q.AddURL(fmt.Sprintf("https://www.isna.ir/page/archive.xhtml?mn=7&wide=0&dy=20&ms=0&pi=%d&yr=1397", i))
-	}
-	q.Run(linkExtractor)
+	return detailExtractor
 }

@@ -16,11 +16,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
+var (
+	yjcNewsRegex = regexp.MustCompile(`https://www\.yjc\.ir/fa/news/\d+/.*`)
+	yjcCodeRegex = regexp.MustCompile(`\d{7}`)
+)
+
 // YJCExtract starts a bot for https://www.yjc.ir
 func YJCExtract(exportCmd chan<- *exec.Cmd) {
-	var data *NewsData = &NewsData{}
-
-	//collection := getDatabaseCollection("YJC")
 	collection := collectionInit("YJC")
 
 	var cmd = exec.Command("mongoexport",
@@ -40,22 +42,20 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 		// colly.Async(true),
 		colly.Debugger(&debug.LogDebugger{}),
 	)
-	newsRegex := regexp.MustCompile(`https://www\.yjc\.ir/fa/news/\d+/.*`)
-	codeRegex := regexp.MustCompile(`\d{7}`)
 
 	detailExtractor := colly.NewCollector()
 	detailExtractor.MaxDepth = 1
 	detailExtractor.Async = true
 	detailExtractor.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 8})
 
-	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
+	linkExtractor.OnHTML(".linear_news a[href]", func(e *colly.HTMLElement) {
 		//log.Println(e.Attr("href"))
-		if newsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
+		if yjcNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 
 			partialURL := e.Attr("href")
-			filter := bson.M{"code": codeRegex.FindString(partialURL)}
+			filter := bson.M{"code": yjcCodeRegex.FindString(partialURL)}
 			res := collection.FindOne(ctx, filter)
 
 			code := struct {
@@ -66,14 +66,26 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 				log.Fatal(err)
 			}
 			if code.Code == "" {
-				// go detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
-				detailExtractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
+				d := &NewsData{}
+				extractor := newYJCNewsExtactor(d, collection)
+				extractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
 			}
 			// log.Println("Extractor is Skipping", e.Request.URL)
 		}
 		//e.Request.Visit(e.Attr("href"))
 	})
 
+	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 1300})
+
+	for i := 1; i < 1200; i++ {
+		q.AddURL(fmt.Sprintf("https://www.yjc.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1390/01/01&to_date=1398/10/14&p=%d", i))
+	}
+	q.Run(linkExtractor)
+}
+
+func newYJCNewsExtactor(data *NewsData, collection *mongo.Collection) *colly.Collector {
+	detailExtractor := colly.NewCollector()
+	detailExtractor.MaxDepth = 1
 	detailExtractor.OnRequest(func(r *colly.Request) {
 		data.Title = ""
 		data.Summary = ""
@@ -102,7 +114,7 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 
 	//news code
 	detailExtractor.OnResponse(func(r *colly.Response) {
-		data.Code = codeRegex.FindString(r.Request.URL.String())
+		data.Code = yjcCodeRegex.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
@@ -119,11 +131,5 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 		collection.InsertOne(ctx, data)
 		log.Println("Scraped:", r.Request.URL.String())
 	})
-
-	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 1300})
-
-	for i := 1; i < 1200; i++ {
-		q.AddURL(fmt.Sprintf("https://www.yjc.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1390/01/01&to_date=1398/10/14&p=%d", i))
-	}
-	q.Run(linkExtractor)
+	return detailExtractor
 }
