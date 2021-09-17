@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"github.com/gocolly/colly/queue"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"github.com/gocolly/colly/v2/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
 	tabnakNewsRegex = regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
-	tabnakCodeRegex = regexp.MustCompile(`\d{6}`)
+	tabnakCodeRegex = regexp.MustCompile(`\d+`)
 )
 
 // TabnakExtract starts a bot for https://www.tabnak.ir

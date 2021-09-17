@@ -9,19 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"github.com/gocolly/colly/queue"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"github.com/gocolly/colly/v2/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	farsnewsNewsRegex = regexp.MustCompile(`https://www\.farsnews\.com/.*news/\d+/.*`)
-	farsnewsCodeRegex = regexp.MustCompile(`\d{14}`)
+	farsnewsNewsRegex = regexp.MustCompile(`https://www\.farsnews\.ir/.*news/\d+/.*`)
+	farsnewsCodeRegex = regexp.MustCompile(`\d+`)
 )
 
-// FarsNewsExtract starts a bot for https://www.farsnews.com
+// FarsNewsExtract starts a bot for https://www.farsnews.ir
 func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 	collection := collectionInit("Farsnews")
 
@@ -37,7 +37,7 @@ func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(1),
 		colly.URLFilters(
-		//regexp.MustCompile(`https://www\.farsnews\.com(|/news/\d+.*)$`),
+		//regexp.MustCompile(`https://www\.farsnews\.ir(|/news/\d+.*)$`),
 		),
 		// colly.Async(true),
 		colly.Debugger(&debug.LogDebugger{}),
@@ -74,7 +74,7 @@ func FarsNewsExtract(exportCmd chan<- *exec.Cmd) {
 	for month := 10; month > 0; month-- {
 		for day := 15; day > 0; day-- {
 			for i := 1; i < 31; i++ {
-				q.AddURL(fmt.Sprintf("https://www.farsnews.com/archive?cat=-1&subcat=-1&date=1398%%2F%d%%2F%d&p=%d", month, day, i))
+				q.AddURL(fmt.Sprintf("https://www.farsnews.ir/archive?cat=-1&subcat=-1&date=1398%%2F%d%%2F%d&p=%d", month, day, i))
 			}
 		}
 	}

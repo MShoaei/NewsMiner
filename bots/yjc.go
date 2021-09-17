@@ -9,19 +9,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"github.com/gocolly/colly/queue"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"github.com/gocolly/colly/v2/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
-	yjcNewsRegex = regexp.MustCompile(`https://www\.yjc\.ir/fa/news/\d+/.*`)
-	yjcCodeRegex = regexp.MustCompile(`\d{7}`)
+	yjcNewsRegex = regexp.MustCompile(`https://www\.yjc\.news/fa/news/\d+/.*`)
+	yjcCodeRegex = regexp.MustCompile(`\d+`)
 )
 
-// YJCExtract starts a bot for https://www.yjc.ir
+// YJCExtract starts a bot for https://www.yjc.news
 func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	collection := collectionInit("YJC")
 
@@ -78,7 +78,7 @@ func YJCExtract(exportCmd chan<- *exec.Cmd) {
 	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 1300})
 
 	for i := 1; i < 1200; i++ {
-		q.AddURL(fmt.Sprintf("https://www.yjc.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1390/01/01&to_date=1398/10/14&p=%d", i))
+		q.AddURL(fmt.Sprintf("https://www.yjc.news/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1390/01/01&to_date=1398/10/14&p=%d", i))
 	}
 	q.Run(linkExtractor)
 }

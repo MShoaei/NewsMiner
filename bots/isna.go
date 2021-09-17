@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"github.com/gocolly/colly/queue"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"github.com/gocolly/colly/v2/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
 	isnaNewsRegex = regexp.MustCompile(`https://www\.isna\.ir/news/\d+/.*`)
-	isnaCodeRegex = regexp.MustCompile(`\d{11}`)
+	isnaCodeRegex = regexp.MustCompile(`\d+`)
 )
 
 // ISNAExtract starts a bot for https://www.isna.ir

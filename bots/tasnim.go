@@ -9,16 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"github.com/gocolly/colly/queue"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"github.com/gocolly/colly/v2/queue"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 var (
 	tasnimNewsRegex = regexp.MustCompile(`https://www\.tasnimnews\.com/fa/news/\d+/.*`)
-	tasnimCodeRegex = regexp.MustCompile(`\d{7}`)
+	tasnimCodeRegex = regexp.MustCompile(`\d+`)
 )
 
 // TasnimExtract starts a bot for https://www.tasnimnews.com
