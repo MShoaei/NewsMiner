@@ -3,16 +3,17 @@ package bots
 import (
 	"context"
 	"fmt"
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
 	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"regexp"
 	"time"
+
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // type Done struct {
