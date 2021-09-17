@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gocolly/colly"
-	"github.com/gocolly/colly/debug"
+	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/debug"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
