@@ -8,16 +8,14 @@ import (
 )
 
 func main() {
-	// number 10 is just that, A NUMBER!
-	// it can be changed but should at least be equal
-	// to the number of bots running in parallel!
-	exportCmds := make(chan *exec.Cmd, 10)
+	// channel buffer must be the same size as the number of bots
+	exportCmds := make(chan *exec.Cmd, 5)
 
-	go bots.BBCExtract(exportCmds)
-	// go bots.YJCExtract(exportCmds)
 	go bots.FarsNewsExtract(exportCmds)
-	// go bots.TabnakExtract(exportCmds)
+	go bots.ISNAExtract(exportCmds)
+	go bots.TabnakExtract(exportCmds)
 	go bots.TasnimExtract(exportCmds)
+	go bots.YJCExtract(exportCmds)
 
 	// short sleep to make sure all the bots have started
 	// successfully before closing the channel.
