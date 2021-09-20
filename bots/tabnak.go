@@ -1,137 +1,138 @@
 package bots
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"os/exec"
-	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/MShoaei/NewsMiner/database"
 	"github.com/gocolly/colly/v2"
-	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/queue"
-	"go.mongodb.org/mongo-driver/bson"
+	ptime "github.com/yaa110/go-persian-calendar"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var (
-	tabnakNewsRegex = regexp.MustCompile(`http(|s)://(www|ostanha)\.tabnak\w*\.ir/fa/news/\d+/.*`)
-	tabnakCodeRegex = regexp.MustCompile(`\d+`)
-)
+var ()
+
+type Tabnak struct {
+	bot
+}
+
+func NewTabnakBot(threads int, db *database.DB, collection *mongo.Collection, wg *sync.WaitGroup) *Tabnak {
+	tabnakNewsRegex, _ := db.GetNewsPageRegex(string(TabnakAgency))
+	tabnakCodeRegex, _ := db.GetNewsCodeRegex(string(TabnakAgency))
+	archiveURL, _ := db.GetArchiveURL(string(TabnakAgency))
+	t := &Tabnak{
+		bot: bot{
+			wg:         wg,
+			NewsPage:   tabnakNewsRegex,
+			NewsCode:   tabnakCodeRegex,
+			DB:         db,
+			Collection: collection,
+			Threads:    threads,
+			ArchiveURL: archiveURL,
+		},
+	}
+	t.ArchiveCrawler = t.getArchiveCrawler()
+	return t
+}
+
+func (t *Tabnak) Extract(pages int) {
+	defer t.wg.Done()
+	q := t.fillQueue(pages)
+	q.Run(t.ArchiveCrawler)
+}
+
+func (t *Tabnak) fillQueue(pages int) *queue.Queue {
+	now := ptime.New(time.Now())
+	q, _ := queue.New(t.Threads, &queue.InMemoryQueueStorage{MaxSize: pages})
+
+	currentPage := 0
+	for currentPage < pages {
+		count := t.getPageCount(now)
+		for i := 1; i <= count; i++ {
+			err := q.AddURL(fmt.Sprintf(t.ArchiveURL, now.Format("yyyy/MM/dd"), i))
+			if err != nil {
+				return q
+			}
+			currentPage++
+		}
+		now = now.AddDate(0, 0, -1)
+	}
+	return q
+}
+
+func (t *Tabnak) getPageCount(date ptime.Time) int {
+	return 10
+}
+
+func (t *Tabnak) isNewsPage(e *colly.HTMLElement) bool {
+	return t.NewsPage.MatchString(e.Request.AbsoluteURL(e.Attr("href")))
+}
 
 // TabnakExtract starts a bot for https://www.tabnak.ir
-func TabnakExtract(exportCmd chan<- *exec.Cmd) {
-	collection := collectionInit("Tabnak")
-
-	var cmd = exec.Command("mongoexport",
-		"--uri=mongodb://localhost:27017/Tabnak",
-		fmt.Sprintf("--collection=%s", collection.Name()),
-		"--type=csv",
-		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./tabnak/%s.csv", collection.Name()),
-	)
-	exportCmd <- cmd
-
+func (t *Tabnak) getArchiveCrawler() *colly.Collector {
 	linkExtractor := colly.NewCollector(
 		colly.MaxDepth(1),
-		colly.URLFilters(
-			regexp.MustCompile(`https://www.tabnak.ir/fa/archive.*`),
-		),
-		//colly.Async(true),
-		colly.Debugger(&debug.LogDebugger{}),
 	)
 
 	linkExtractor.OnHTML(".linear_news a[href]", func(e *colly.HTMLElement) {
-		log.Println(e.Attr("href"))
-		if tabnakNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-
-			partialURL := e.Attr("href")
-			filter := bson.M{"code": tabnakCodeRegex.FindString(partialURL)}
-			res := collection.FindOne(ctx, filter)
-
-			code := struct {
-				Code string
-			}{}
-			err := res.Decode(&code)
-			if err != nil && err != mongo.ErrNoDocuments {
-				log.Fatal(err)
-			}
-			if code.Code == "" {
-				d := &NewsData{}
-				extractor := newTabnakDetailExtractor(d, collection)
-				extractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
-			}
-			// log.Println("Extractor is Skipping", e.Request.URL)
+		partialURL := e.Attr("href")
+		code := t.NewsCode.FindString(partialURL)
+		if !t.isNewsPage(e) || t.DB.NewsWithCodeExists(t.Collection, code) {
+			return
 		}
-		//e.Request.Visit(e.Attr("href"))
+		data, err := t.extractPageDetail(e.Request.AbsoluteURL(e.Attr("href")))
+		if err != nil {
+			return
+		}
+		t.DB.Save(t.Collection, data)
 	})
 
-	q, _ := queue.New(6, &queue.InMemoryQueueStorage{MaxSize: 1300})
-	for i := 1; i < 1200; i++ {
-		q.AddURL(fmt.Sprintf("https://www.tabnak.ir/fa/archive?service_id=-1&sec_id=-1&cat_id=-1&rpp=100&from_date=1384/01/01&to_date=1398/10/13&p=%d", i))
-	}
-	q.Run(linkExtractor)
+	return linkExtractor
 }
 
-func newTabnakDetailExtractor(data *NewsData,
-	collection *mongo.Collection) *colly.Collector {
-	detailExtractor := colly.NewCollector()
-	detailExtractor.MaxDepth = 1
-	detailExtractor.OnRequest(func(r *colly.Request) {
-		data.Title = ""
-		data.Summary = ""
-		data.Text = ""
-		data.Tags = make([]string, 0, 8)
-		data.Code = ""
-		data.DateTime = ""
-		data.NewsAgency = ""
-		data.Reporter = ""
-	})
+func (t *Tabnak) extractPageDetail(url string) (*NewsData, error) {
+	pageCrawler := colly.NewCollector(
+		colly.MaxDepth(1),
+	)
+
+	data := &NewsData{
+		NewsAgencyID: "Tabnak",
+		Tags:         make([]string, 0, 8),
+	}
 
 	// news title
-	detailExtractor.OnHTML(".title", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".title", func(e *colly.HTMLElement) {
 		data.Title = strings.TrimSpace(e.Text)
 	})
 
 	// news summary
-	detailExtractor.OnHTML(".subtitle", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".subtitle", func(e *colly.HTMLElement) {
 		data.Summary = strings.TrimSpace(e.Text)
 	})
 
 	//news body
-	detailExtractor.OnHTML(".body", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".body", func(e *colly.HTMLElement) {
 		data.Text = strings.TrimSpace(e.Text)
 	})
 
 	//news tags
-	detailExtractor.OnHTML(".btn-primary-news", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".btn-primary-news", func(e *colly.HTMLElement) {
 		data.Tags = append(data.Tags, strings.TrimSpace(e.Text))
 	})
 
 	// news code
-	detailExtractor.OnResponse(func(r *colly.Response) {
-		data.Code = tabnakCodeRegex.FindString(r.Request.URL.String())
+	pageCrawler.OnResponse(func(r *colly.Response) {
+		data.Code = t.NewsCode.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
-	detailExtractor.OnHTML(".fa_date", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".fa_date", func(e *colly.HTMLElement) {
 		data.DateTime = strings.TrimSpace(e.Text)
 	})
 
-	detailExtractor.OnScraped(func(r *colly.Response) {
-		data.NewsAgency = "خبرگزاری تابناک"
-
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		_, err := collection.InsertOne(ctx, data)
-		if err != nil {
-			log.Fatal(err)
-		}
-		log.Println("Scraped:", r.Request.URL.String())
-	})
-	return detailExtractor
+	err := pageCrawler.Visit(url)
+	return data, err
 }

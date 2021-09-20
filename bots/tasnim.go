@@ -1,141 +1,136 @@
 package bots
 
 import (
-	"context"
 	"fmt"
-	"log"
-	"os/exec"
-	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/MShoaei/NewsMiner/database"
 	"github.com/gocolly/colly/v2"
-	"github.com/gocolly/colly/v2/debug"
 	"github.com/gocolly/colly/v2/queue"
-	"go.mongodb.org/mongo-driver/bson"
+	ptime "github.com/yaa110/go-persian-calendar"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-var (
-	tasnimNewsRegex = regexp.MustCompile(`https://www\.tasnimnews\.com/fa/news/\d+/.*`)
-	tasnimCodeRegex = regexp.MustCompile(`\d+`)
-)
+var ()
 
-// TasnimExtract starts a bot for https://www.tasnimnews.com
-func TasnimExtract(exportCmd chan<- *exec.Cmd) {
-	collection := collectionInit("Tasnim")
-
-	var cmd = exec.Command("mongoexport",
-		"--uri=mongodb://localhost:27017/Tasnim",
-		fmt.Sprintf("--collection=%s", collection.Name()),
-		"--type=csv",
-		"--fields=title,summary,text,tags,code,datetime,newsagency,reporter",
-		fmt.Sprintf("--out=./tasnim/%s.csv", collection.Name()),
-	)
-	exportCmd <- cmd
-
-	linkExtractor := colly.NewCollector(
-		colly.MaxDepth(1),
-		colly.URLFilters(
-			regexp.MustCompile(`https://www.tasnimnews.com/fa/archive.*`),
-		),
-		// colly.Async(true),
-		colly.Debugger(&debug.LogDebugger{}),
-	)
-
-	linkExtractor.OnHTML("a[href]", func(e *colly.HTMLElement) {
-		// log.Println(e.Attr("href"))
-		if tasnimNewsRegex.MatchString(e.Request.AbsoluteURL(e.Attr("href"))) {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			defer cancel()
-
-			partialURL := e.Attr("href")
-			filter := bson.M{"code": tasnimCodeRegex.FindString(partialURL)}
-			res := collection.FindOne(ctx, filter)
-
-			code := struct {
-				Code string
-			}{}
-			err := res.Decode(&code)
-			if err != nil && err != mongo.ErrNoDocuments {
-				log.Fatal(err)
-			}
-			if code.Code == "" {
-				d := &NewsData{}
-				extractor := newTasnimDetailExtractor(d, collection)
-				extractor.Visit(e.Request.AbsoluteURL(e.Attr("href")))
-			}
-			// log.Println("Extractor is Skipping", e.Request.URL)
-		}
-		//e.Request.Visit(e.Attr("href"))
-	})
-
-	q, _ := queue.New(2, &queue.InMemoryQueueStorage{MaxSize: 10000})
-
-	for month := 5; month > 0; month-- {
-		for day := 30; day > 0; day-- {
-			for page := 1; page < 40; page++ {
-				q.AddURL(fmt.Sprintf("https://www.tasnimnews.com/fa/archive?date=1398%%2F%d%%2F%d&sub=-1&service=-1&page=%d", month, day, page))
-			}
-		}
-	}
-	q.Run(linkExtractor)
+type Tasnim struct {
+	bot
 }
 
-func newTasnimDetailExtractor(data *NewsData, collection *mongo.Collection) *colly.Collector {
-	detailExtractor := colly.NewCollector()
-	detailExtractor.MaxDepth = 1
-	detailExtractor.OnRequest(func(r *colly.Request) {
-		data.Title = ""
-		data.Summary = ""
-		data.Text = ""
-		data.Tags = make([]string, 0, 8)
-		data.Code = ""
-		data.DateTime = ""
-		data.NewsAgency = ""
-		data.Reporter = ""
+func NewTasnimBot(threads int, db *database.DB, collection *mongo.Collection, wg *sync.WaitGroup) *Tasnim {
+	tasnimNewsRegex, _ := db.GetNewsPageRegex(string(TasnimAgency))
+	tasnimCodeRegex, _ := db.GetNewsCodeRegex(string(TasnimAgency))
+	archiveURL, _ := db.GetArchiveURL(string(TasnimAgency))
+
+	t := &Tasnim{
+		bot: bot{
+			wg:         wg,
+			NewsPage:   tasnimNewsRegex,
+			NewsCode:   tasnimCodeRegex,
+			DB:         db,
+			Collection: collection,
+			Threads:    threads,
+			ArchiveURL: archiveURL,
+		},
+	}
+	t.ArchiveCrawler = t.getArchiveCrawler()
+	return t
+}
+func (t *Tasnim) Extract(pages int) {
+	defer t.wg.Done()
+	q := t.fillQueue(pages)
+	q.Run(t.ArchiveCrawler)
+}
+
+func (t *Tasnim) fillQueue(pages int) *queue.Queue {
+	now := ptime.New(time.Now())
+	q, _ := queue.New(t.Threads, &queue.InMemoryQueueStorage{MaxSize: pages})
+
+	currentPage := 0
+	for currentPage < pages {
+		count := t.getPageCount(now)
+		for i := 1; i <= count; i++ {
+			err := q.AddURL(fmt.Sprintf(t.ArchiveURL, now.Format("yyyy/MM/dd"), i))
+			if err != nil {
+				return q
+			}
+			currentPage++
+		}
+		now = now.AddDate(0, 0, -1)
+	}
+	return q
+}
+
+func (t *Tasnim) getPageCount(date ptime.Time) int {
+	return 10
+}
+
+func (t *Tasnim) isNewsPage(e *colly.HTMLElement) bool {
+	return t.NewsPage.MatchString(e.Request.AbsoluteURL(e.Attr("href")))
+}
+
+// TasnimExtract starts a bot for https://www.tasnimnews.com
+func (t *Tasnim) getArchiveCrawler() *colly.Collector {
+	linkExtractor := colly.NewCollector(
+		colly.MaxDepth(1),
+	)
+
+	linkExtractor.OnHTML("article.list-item > a", func(e *colly.HTMLElement) {
+		// log.Println(e.Attr("href"))
+		partialURL := e.Attr("href")
+		code := t.NewsCode.FindString(partialURL)
+		if !t.isNewsPage(e) || t.DB.NewsWithCodeExists(t.Collection, code) {
+			return
+		}
+		data, err := t.extractPageDetail(e.Request.AbsoluteURL(e.Attr("href")))
+		if err != nil {
+			return
+		}
+		t.DB.Save(t.Collection, data)
 	})
+	return linkExtractor
+}
+
+func (t *Tasnim) extractPageDetail(url string) (*NewsData, error) {
+	pageCrawler := colly.NewCollector(
+		colly.MaxDepth(1),
+	)
+
+	data := &NewsData{
+		NewsAgencyID: "Tasnim",
+		Tags:         make([]string, 0, 8),
+	}
 
 	// news title
-	detailExtractor.OnHTML("h1", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML("h1", func(e *colly.HTMLElement) {
 		data.Title = strings.TrimSpace(e.Text)
 	})
 
 	// news summary
-	detailExtractor.OnHTML(".lead", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".lead", func(e *colly.HTMLElement) {
 		data.Summary = strings.TrimSpace(e.Text)
 	})
 
 	//news body
-	detailExtractor.OnHTML(".story", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".story", func(e *colly.HTMLElement) {
 		data.Text = strings.TrimSpace(e.Text)
 	})
 
-	//news tags
-	// detailExtractor.OnHTML(".btn-primary-news", func(e *colly.HTMLElement) {
-	// 	data.Tags = append(data.Tags, strings.TrimSpace(e.Text))
-	// })
-
 	// news code
-	detailExtractor.OnResponse(func(r *colly.Response) {
+	pageCrawler.OnResponse(func(r *colly.Response) {
 		// fmt.Println(strings.Split(e.Text, ":")[1])
 		// data.Code = strings.TrimSpace(strings.Split(e.Text, ":")[1])
-		data.Code = tasnimCodeRegex.FindString(r.Request.URL.String())
+		data.Code = t.NewsCode.FindString(r.Request.URL.String())
 	})
 
 	// news date and time
-	detailExtractor.OnHTML(".time", func(e *colly.HTMLElement) {
+	pageCrawler.OnHTML(".time", func(e *colly.HTMLElement) {
 		// fmt.Println(strings.Split(e.Text, ":")[1])
 		data.DateTime = strings.TrimSpace(e.Text)
 	})
 
-	detailExtractor.OnScraped(func(r *colly.Response) {
-		data.NewsAgency = "خبرگزاری تسنیم"
-
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-		defer cancel()
-		collection.InsertOne(ctx, data)
-		log.Println("Scraped:", r.Request.URL.String())
-	})
-	return detailExtractor
+	err := pageCrawler.Visit(url)
+	return data, err
 }
