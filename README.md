@@ -4,36 +4,12 @@ NewsMiner is a web crawler to extract data from Persian news websites.
 
 ## Database
 
-```bash
-mkdir data
-docker run -d --name NewsMinerdb \
-    -p 27017:27017 -v $(pwd)/data:/data/db \
-    mongo:4
-```
+use `init-db` to initialize the database
 
-to connect:
+## Running
+
+to start extracting from all websites run the command below:
 
 ```bash
-mongo "localhost/News" \
---authenticationDatabase "admin" \
---username "miner" \
---password "password"
-```
-
-extract data as CSV:
-
-```bash
-mongoexport --uri="mongodb://localhost:27017/Farsnews" \
---collection="farsnews" \
---type=csv
---fields=title,summary,text,tags,code,datetime,newsagency,reporter
---out="./farsnews/farsnews.csv"
-```
-
-extract data as json:
-
-```bash
-mongoexport --uri="mongodb://localhost:27017/Farsnews" \
---collection="data" \
---out="data.json"
+go run ./main.go -d "NewsMiner" -c "mongodb://localhost:27017/?compressors=disabled&gssapiServiceName=mongodb" -p 10 -t 10 --farsnews --isna --tabnak --tasnim --yjc
 ```
