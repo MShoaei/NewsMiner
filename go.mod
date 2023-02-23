@@ -36,11 +36,11 @@ require (
 	github.com/xdg-go/stringprep v1.0.2 // indirect
 	github.com/yaa110/go-persian-calendar v1.0.2
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/text v0.3.8 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
 )
 
 require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 )
