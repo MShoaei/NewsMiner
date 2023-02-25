@@ -42,5 +42,5 @@ require (
 
 require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 )
